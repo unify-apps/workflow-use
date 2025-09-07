@@ -2,6 +2,7 @@ import asyncio
 import json
 import pathlib
 from typing import Optional
+from pathlib import Path
 
 import uvicorn
 from browser_use import Browser
@@ -20,8 +21,6 @@ from workflow_use.recorder.views import (
 # Path Configuration (should be identical to recorder.py if run from the same context)
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
 EXT_DIR = SCRIPT_DIR.parent.parent.parent / 'extension' / '.output' / 'chrome-mv3'
-USER_DATA_DIR = SCRIPT_DIR / 'user_data_dir'
-
 
 class RecordingService:
 	def __init__(self):
@@ -102,13 +101,14 @@ class RecordingService:
 				except Exception as e_close:
 					print(f'[Service] Error closing browser on recording stop: {e_close}')
 
-	async def _launch_browser_and_wait(self):
+	async def _launch_browser_and_wait(self, executionId: str):
 		print(f'[Service] Attempting to load extension from: {EXT_DIR}')
 		if not EXT_DIR.exists() or not EXT_DIR.is_dir():
 			print(f'[Service] ERROR: Extension directory not found: {EXT_DIR}')
 			self.recording_complete_event.set()  # Signal failure
 			return
 
+		USER_DATA_DIR = Path('/tmp') / executionId / 'user_data'
 		# Ensure user data dir exists
 		USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
 		print(f'[Service] Using browser user data directory: {USER_DATA_DIR}')
@@ -123,6 +123,7 @@ class RecordingService:
 					f'--load-extension={str(EXT_DIR.resolve())}',
 					'--no-default-browser-check',
 					'--no-first-run',
+					'--remote-debugging-port=0',
 				],
 				keep_alive=True,
 			)
@@ -164,7 +165,7 @@ class RecordingService:
 			# This call ensures that if browser is closed manually, we still try to capture.
 			await self._capture_and_signal_final_workflow('BrowserTaskEnded')
 
-	async def capture_workflow(self) -> Optional[WorkflowDefinitionSchema]:
+	async def capture_workflow(self, executionId: str) -> Optional[WorkflowDefinitionSchema]:
 		print('[Service] Starting capture_workflow session...')
 		# Reset state for this session
 		self.last_workflow_update_event = None
@@ -174,7 +175,7 @@ class RecordingService:
 
 		# Start background tasks
 		self.event_processor_task = asyncio.create_task(self._process_event_queue())
-		self.browser_task = asyncio.create_task(self._launch_browser_and_wait())
+		self.browser_task = asyncio.create_task(self._launch_browser_and_wait(executionId))
 
 		# Configure and start Uvicorn server
 		config = uvicorn.Config(self.app, host='127.0.0.1', port=7331, log_level='warning', loop='asyncio')

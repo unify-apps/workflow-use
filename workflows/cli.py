@@ -49,10 +49,13 @@ recording_service = (
 )  # Assuming RecordingService does not need LLM, or handle its potential None state if it does.
 
 
-def get_default_save_dir() -> Path:
+def get_default_save_dir(executionId) -> Path:
 	"""Returns the default save directory for workflows."""
 	# Ensure ./tmp exists for temporary files as well if we use it
-	tmp_dir = Path('./tmp').resolve()
+	if executionId:
+		tmp_dir = Path('/tmp') / executionId
+	else:
+		tmp_dir = Path('./tmp').resolve()
 	tmp_dir.mkdir(parents=True, exist_ok=True)
 	return tmp_dir
 
@@ -147,7 +150,12 @@ def _build_and_save_workflow_from_recording(
 	name='create-workflow',
 	help='Records a new browser interaction and then builds a workflow definition.',
 )
-def create_workflow():
+def create_workflow(
+	executionid: str = typer.Argument(
+		...,
+		help='Execution Id'
+	),
+):
 	"""
 	Guides the user through recording browser actions, then uses the helper
 	to build and save the workflow definition.
@@ -160,7 +168,7 @@ def create_workflow():
 		)
 		raise typer.Exit(code=1)
 
-	default_tmp_dir = get_default_save_dir()  # Ensures ./tmp exists for temporary files
+	default_tmp_dir = get_default_save_dir(executionId=executionid)  # Ensures ./tmp exists for temporary files
 
 	typer.echo(typer.style('Starting interactive browser recording session...', bold=True))
 	typer.echo('Please follow instructions in the browser. Close the browser or follow prompts to stop recording.')
@@ -168,7 +176,7 @@ def create_workflow():
 
 	temp_recording_path = None
 	try:
-		captured_recording_model = asyncio.run(recording_service.capture_workflow())
+		captured_recording_model = asyncio.run(recording_service.capture_workflow(executionid + "/captured_workflows"))
 
 		if not captured_recording_model:
 			typer.secho(
@@ -227,7 +235,7 @@ def build_from_recording_command(
 	Takes a path to a recording JSON file, prompts for workflow details,
 	builds the workflow using BuilderService, and saves it.
 	"""
-	default_save_dir = get_default_save_dir()
+	default_save_dir = get_default_save_dir("")
 	typer.echo(
 		typer.style(
 			f'Building workflow from provided recording: {typer.style(str(recording_path.resolve()), fg=typer.colors.MAGENTA)}',
@@ -315,6 +323,16 @@ def run_workflow_command(
 		help='Path to the .workflow.json file.',
 		show_default=False,
 	),
+ 	inputs_json_path: Path = typer.Option(
+		None,
+		'--inputs-json',
+		'-ij',
+		exists=True,
+		file_okay=True,
+		dir_okay=False,
+		readable=True,
+		help='Optional path to a JSON file containing input values for the workflow.',
+	),
 ):
 	"""
 	Loads and executes a workflow, prompting the user for required inputs.
@@ -347,6 +365,14 @@ def run_workflow_command(
 		typer.secho('Workflow loaded successfully.', fg=typer.colors.GREEN, bold=True)
 
 		inputs = {}
+		if inputs_json_path:
+			try:
+				with open(inputs_json_path, 'r', encoding='utf-8') as f:
+					inputs = json.load(f)
+				typer.secho(f'Loaded inputs from {inputs_json_path}', fg=typer.colors.GREEN)
+			except Exception as e:
+				typer.secho(f'Error loading inputs from JSON file: {e}', fg=typer.colors.RED)
+				raise typer.Exit(code=1)
 		input_definitions = workflow_obj.inputs_def  # Access inputs_def from the Workflow instance
 
 		if input_definitions:  # Check if the list is not empty
@@ -355,6 +381,9 @@ def run_workflow_command(
 			typer.echo()  # Add space
 
 			for input_def in input_definitions:
+				if input_def.name in inputs:
+					typer.echo(f'Skipping input for {input_def.name}, already provided in inputs JSON.')
+					continue
 				var_name_styled = typer.style(input_def.name, fg=typer.colors.CYAN, bold=True)
 				prompt_question = typer.style(f'Enter value for {var_name_styled}', bold=True)
 
