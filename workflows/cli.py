@@ -79,12 +79,7 @@ def _build_and_save_workflow_from_recording(
 	description: str = typer.prompt(typer.style(f'What is the purpose of this {prompt_subject} workflow?', bold=True))
 
 	typer.echo()  # Add space
-	output_dir_str: str = typer.prompt(
-		typer.style('Where would you like to save the final built workflow?', bold=True)
-		+ f" (e.g., ./my_workflows, press Enter for '{default_save_dir}')",
-		default=str(default_save_dir),
-	)
-	output_dir = Path(output_dir_str).resolve()
+	output_dir = default_save_dir
 	output_dir.mkdir(parents=True, exist_ok=True)
 
 	typer.echo(f'The final built workflow will be saved in: {typer.style(str(output_dir), fg=typer.colors.CYAN)}')
