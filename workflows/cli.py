@@ -8,6 +8,7 @@ from pathlib import Path
 
 import typer
 from browser_use import Browser
+from browser_use.browser.profile import BrowserProfile
 
 # Assuming OPENAI_API_KEY is set in the environment
 from langchain_openai import ChatOpenAI
@@ -171,7 +172,7 @@ def create_workflow(
 
 	temp_recording_path = None
 	try:
-		captured_recording_model = asyncio.run(recording_service.capture_workflow(executionid + "/captured_workflows"))
+		captured_recording_model = asyncio.run(recording_service.capture_workflow(executionid))
 
 		if not captured_recording_model:
 			typer.secho(
@@ -343,7 +344,9 @@ def run_workflow_command(
 			# Instantiate Browser and WorkflowController for the Workflow instance
 			# Pass llm_instance for potential agent fallbacks or agentic steps
 			playwright = await patchright_async_playwright().start()
-
+			profile = BrowserProfile(
+				minimum_wait_page_load_time=2.0
+			)
 			browser = Browser(playwright=playwright)
 			controller_instance = WorkflowController()  # Add any necessary config if required
 			workflow_obj = Workflow.load_from_file(

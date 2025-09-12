@@ -3,6 +3,7 @@ import json
 import pathlib
 from typing import Optional
 from pathlib import Path
+import psutil
 
 import uvicorn
 from browser_use import Browser
@@ -112,20 +113,15 @@ class RecordingService:
 		# Ensure user data dir exists
 		USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
 		print(f'[Service] Using browser user data directory: {USER_DATA_DIR}')
-
 		try:
 			# Create browser profile with extension support
 			profile = BrowserProfile(
-				headless=False,
 				user_data_dir=str(USER_DATA_DIR.resolve()),
 				args=[
-					f'--disable-extensions-except={str(EXT_DIR.resolve())}',
-					f'--load-extension={str(EXT_DIR.resolve())}',
-					'--no-default-browser-check',
-					'--no-first-run',
-					'--remote-debugging-port=0',
+					f'--load-extension={str(EXT_DIR.resolve())}'
 				],
-				keep_alive=True,
+				keep_alive=False,
+				enable_default_extensions=False
 			)
 
 			# Create and configure browser
@@ -136,13 +132,30 @@ class RecordingService:
 			await self.browser.start()
 
 			print('[Service] Browser launched. Waiting for close or recording stop...')
+			
+			# Debug: Print Chrome process args to verify remote-debugging-port
 
 			# Wait for browser to be closed manually or recording to stop
 			# We'll implement a simple polling mechanism to check if browser is still running
+			first_iteration = True
 			while True:
 				try:
 					# Check if browser is still running by trying to get current page
 					await self.browser.get_current_page()
+					if first_iteration:
+						print('[Service] Browser is running. Capturing debug port info...')
+						first_iteration = False
+						chrome_process = psutil.Process(pid=self.browser.browser_pid)
+						args = chrome_process.cmdline()
+						print(f'[Service] Chrome launch args: {args}')
+						debug_port = next((arg for arg in args if arg.startswith('--remote-debugging-port=')), '').split('=')[-1].strip()
+						assert debug_port, (
+							f'Could not find --remote-debugging-port=... to connect to in browser launch args: browser_pid={self.browser_pid} {args}'
+						)
+						debug_port_file = Path('/tmp') / executionId / 'chrome_debug_port.txt'
+						debug_port_file.parent.mkdir(parents=True, exist_ok=True)
+						debug_port_file.write_text(debug_port)
+						print(f'[Service] Chrome remote debugging port: {debug_port} (written to {debug_port_file})')
 					await asyncio.sleep(1)  # Poll every second
 				except Exception:
 					# Browser is likely closed

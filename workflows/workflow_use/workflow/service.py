@@ -73,7 +73,7 @@ class Workflow:
 		self.version = self.schema.version
 		self.steps = self.schema.steps
 
-		self.controller = controller or WorkflowController()
+		self.controller = controller or WorkflowController(llm)
 
 		self.browser = browser or Browser()
 

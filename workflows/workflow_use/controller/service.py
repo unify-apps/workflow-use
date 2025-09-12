@@ -54,7 +54,9 @@ DISABLED_DEFAULT_ACTIONS = [
 
 
 class WorkflowController(Controller):
-	def __init__(self, *args, **kwargs):
+	def __init__(self, llm: BaseChatModel = None, *args, **kwargs):
+		# Store the LLM instance for use in actions
+		self.llm = llm
 		# Pass the list of actions to exclude to the base class constructor
 		super().__init__(*args, exclude_actions=DISABLED_DEFAULT_ACTIONS, **kwargs)
 		self.__register_actions()
@@ -212,7 +214,7 @@ class WorkflowController(Controller):
 			param_model=PageExtractionAction,
 		)
 		async def extract_page_content(
-			params: PageExtractionAction, browser_session: Browser, page_extraction_llm: BaseChatModel
+			params: PageExtractionAction, browser_session: Browser
 		):
 			page = await browser_session.get_current_page()
 			import markdownify
@@ -229,13 +231,16 @@ class WorkflowController(Controller):
 
 			prompt = 'Your task is to extract the content of the page. You will be given a page and a goal and you should extract all relevant information around this goal from the page. If the goal is vague, summarize the page. Respond in json format. Extraction goal: {goal}, Page: {page}'
 			template = PromptTemplate(input_variables=['goal', 'page'], template=prompt)
-			try:
-				output = await page_extraction_llm.ainvoke(template.format(goal=params.goal, page=content))
-				msg = f'📄  Extracted from page\n: {output.content}\n'
-				logger.info(msg)
-				return ActionResult(extracted_content=msg, include_in_memory=True)
-			except Exception as e:
-				logger.debug(f'Error extracting content: {e}')
-				msg = f'📄  Extracted from page\n: {content}\n'
-				logger.info(msg)
-				return ActionResult(extracted_content=msg)
+			if self.llm is not None:
+				try:
+					output = await self.llm.ainvoke(template.format(goal=params.goal, page=content))
+					msg = f'📄  Extracted from page\n: {output.content}\n'
+					logger.info(msg)
+					return ActionResult(extracted_content=msg, include_in_memory=True)
+				except Exception as e:
+					logger.debug(f'Error extracting content: {e}')
+			
+			# Fallback to returning raw content if LLM is not available or fails
+			msg = f'📄  Extracted from page\n: {content}\n'
+			logger.info(msg)
+			return ActionResult(extracted_content=msg)

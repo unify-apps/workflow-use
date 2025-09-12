@@ -46,12 +46,12 @@ class BuilderService:
 			self.llm_structured = llm  # Store the original llm
 
 		self.prompt_template = PromptTemplate.from_template(WORKFLOW_BUILDER_PROMPT_TEMPLATE)
-		self.actions_markdown = self._get_available_actions_markdown()
+		self.actions_markdown = self._get_available_actions_markdown(llm=llm)
 		logger.info('BuilderService initialized.')
 
-	def _get_available_actions_markdown(self) -> str:
+	def _get_available_actions_markdown(self, llm: BaseChatModel) -> str:
 		"""Return a markdown list of available actions and their schema."""
-		controller = WorkflowController()
+		controller = WorkflowController(llm)
 		lines: List[str] = []
 		for action in controller.registry.registry.actions.values():
 			# Only include deterministic actions relevant for building from recordings

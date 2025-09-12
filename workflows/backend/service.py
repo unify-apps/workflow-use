@@ -39,7 +39,7 @@ class WorkflowService:
 			self.llm_instance = None
 
 		self.browser_instance = Browser()
-		self.controller_instance = WorkflowController()
+		self.controller_instance = WorkflowController(self.llm_instance)
 
 		# In‑memory task tracking
 		self.active_tasks: Dict[str, TaskInfo] = {}
